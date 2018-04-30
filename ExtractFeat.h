@@ -25,8 +25,8 @@ struct Fillet {
 	
 	Rect boundRect;									// The img is generated from the original image using this boundingRect
 	Point2f contour_center_mass;					//coordinate of contour center of mass
-	vector<Point> contour;							// Coordinates of the fillet 
-	vector<vector<Point>> bloodstain_contours, indendts;		// Coordinates of the bloodstains detected + Coordinates of the detected indents				
+	vector<Point> contour,hull;							// Coordinates of the fillet 
+	vector<vector<Point>> bloodstain_contours, indendts,skin_contour;		// Coordinates of the bloodstains detected + Coordinates of the detected indents				
 	Mat img, bin;									// Only the boundingRect image from original image + Binary image of fillet							
 };
 
@@ -45,10 +45,11 @@ public:
 	void getBloodStains(Fillet &fillet);
 	void getIndents(Fillet &fillet);
 	void getShape(Fillet &fillet);
+	void getSkin(Fillet &fillet);
 
 	//------------Efter-Features-------------------------------
 	void saveFeatures(const Fillet &fillet);
-	void drawFeatures(Mat &img, const Fillet &fillet);
+	void drawFeatures(Mat &img, Fillet &fillet);
 	//------------Main----------------------
 	void run(vector<Mat> &images);
 };
