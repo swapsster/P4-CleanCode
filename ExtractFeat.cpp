@@ -8,7 +8,7 @@ void ExtractFeat::clearFileContent()
 {
 	ofstream ofs;
 	ofs.open(data_file_path, std::ofstream::out | std::ofstream::trunc);										 // Open and clear content
-	ofs << "Name,Width,Height,Area,Hist_mean blue,Hist_mean green,Hist_mean red,Bloodstains,Indents,Hullarity\n";
+	ofs << "Name,Width,Height,Area,Hist_mean blue,Hist_mean green,Hist_mean red,Bloodstains,Indents,Hullarity,Skin Areas\n";
 	ofs.close();
 }
 
@@ -56,13 +56,62 @@ void ExtractFeat::getMeanHist(Fillet &fillet)
 	calcHist(&bgr_planes[1], 1, nullptr, Mat(), g_hist, 1, &histSize, &histRange, uniform, accumulate);
 	calcHist(&bgr_planes[2], 1, nullptr, Mat(), r_hist, 1, &histSize, &histRange, uniform, accumulate);
 
+	//------------------------------------------------------------------------------------------------//
+	// Draw the histograms for B, G and R
+	int hist_w = 512; int hist_h = 400;
+	int bin_w = cvRound((double)hist_w / histSize);
+
+	Mat histImage(hist_h, hist_w, CV_8UC3, Scalar(0, 0, 0));
+
+	/// Normalize the result to [ 0, histImage.rows ]
+	normalize(b_hist, b_hist, 0, histImage.rows, NORM_MINMAX, -1, Mat());
+	normalize(g_hist, g_hist, 0, histImage.rows, NORM_MINMAX, -1, Mat());
+	normalize(r_hist, r_hist, 0, histImage.rows, NORM_MINMAX, -1, Mat());
+
+
+	ofstream datafile;
+	datafile.open("C:\\Users\\Swapsster\\Documents\\p4\\project\\CleanCode\\CleanCode\\Data\\Histogram.dat", std::ios_base::app);
+	datafile << fillet.name << ',';
+
+	
+	
+
+
+	/// Draw for each channel
+	for (int i = 2; i < histSize; i++)
+	{
+
+		datafile << cvRound(b_hist.at<float>(i - 1)) << ',';
+
+		datafile << cvRound(g_hist.at<float>(i - 1)) << ',';
+
+		datafile << cvRound(r_hist.at<float>(i - 1)) << '\n';
+
+		line(histImage, Point(bin_w*(i - 1), hist_h - cvRound(b_hist.at<float>(i - 1))),
+			Point(bin_w*(i), hist_h - cvRound(b_hist.at<float>(i))),
+			Scalar(255, 0, 0), 2, 8, 0);
+		line(histImage, Point(bin_w*(i - 1), hist_h - cvRound(g_hist.at<float>(i - 1))),
+			Point(bin_w*(i), hist_h - cvRound(g_hist.at<float>(i))),
+			Scalar(0, 255, 0), 2, 8, 0);
+		line(histImage, Point(bin_w*(i - 1), hist_h - cvRound(r_hist.at<float>(i - 1))),
+			Point(bin_w*(i), hist_h - cvRound(r_hist.at<float>(i))),
+			Scalar(0, 0, 255), 2, 8, 0);
+	}
+	datafile.close();
+	/// Display
+	//namedWindow("H"+fillet.name, CV_WINDOW_AUTOSIZE);
+	//imshow("H"+fillet.name, histImage);
+	
+
+
+
 	/// Compute the weighted mean
 	float sum[3] = { 0 };
 	int pixels[3] = { 0 };
 	
 	for (int i = 0; i < b_hist.rows; i++)										// Start at i = 0 to ignore black pixels
 	{				
-	
+
 		pixels[0] += b_hist.at<float>(i);
 		pixels[1] += g_hist.at<float>(i);
 		pixels[2] += r_hist.at<float>(i);
@@ -75,6 +124,9 @@ void ExtractFeat::getMeanHist(Fillet &fillet)
 	fillet.hist_mean[0] = sum[0] / pixels[0];
 	fillet.hist_mean[1] = sum[1] / pixels[1];
 	fillet.hist_mean[2] = sum[2] / pixels[2];
+
+
+
 }
 
 void ExtractFeat::getDimensions(Fillet &fillet) 
@@ -118,7 +170,7 @@ void ExtractFeat::getBloodStains(Fillet &fillet)
 
 	Mat bin = color_arr[2];												// Using the red(R) color space 'bin'
 
-	threshold(bin, bin, 130, 255, 0);									// Threshold to find dark spots
+	threshold(bin, bin, 100, 255, 0);									// Threshold to find dark spots
 	medianBlur(bin, bin, 21); 											// Blurring to get a more smooth BLOB
 
 
@@ -131,12 +183,12 @@ void ExtractFeat::getBloodStains(Fillet &fillet)
 
 	// Filter by Area (Min and max to only get pixels defining a common blood stain)
 	params.filterByArea = true;
-	params.minArea = 1600; //bloodspot minmum størrelse
-	params.maxArea = 6400; //bloodspot maximuum størrelse
+	params.minArea = 1000; //bloodspot minmum størrelse
+	params.maxArea = 8000; //bloodspot maximuum størrelse
 
 	// Filter by Inertia
-	params.filterByInertia = true;
-	params.minInertiaRatio = 0.2; //hvor meget bloodspottet afviger sig fra en cirkel
+	//params.filterByInertia = true;
+	//params.minInertiaRatio = 0.2; //hvor meget bloodspottet afviger sig fra en cirkel
 
 	Ptr<SimpleBlobDetector> detector = SimpleBlobDetector::create(params);
 	vector<KeyPoint> keypoints;
@@ -223,7 +275,16 @@ void ExtractFeat::getShape(Fillet &fillet)
 
 void ExtractFeat::getSkin(Fillet &fillet)
 {
-	Mat skinimg = Mat(fillet.boundRect.height, fillet.boundRect.width, CV_8UC3, Scalar(0, 0, 0));
+	int edgeSize = 50;
+
+
+	Mat skin_region = Mat(fillet.boundRect.height + edgeSize * 2, fillet.boundRect.width + edgeSize * 2, CV_8U, Scalar(0, 0, 0));
+	
+	Rect region = Rect(edgeSize, edgeSize, fillet.boundRect.width, fillet.boundRect.height);
+
+	
+
+	Mat skinimg = Mat(fillet.boundRect.height + edgeSize * 2, fillet.boundRect.width + edgeSize * 2, CV_8UC3, Scalar(0, 0, 0));
 	cvtColor(fillet.img, skinimg, COLOR_BGR2HSV);
 
 	vector<Mat> hsv_planes; 	/// Separate the image in 3 planes ( B, G and R )
@@ -231,37 +292,60 @@ void ExtractFeat::getSkin(Fillet &fillet)
 
 
 	// Set threshold and maxValue
-	double thresh = 132;
+	double thresh = 125;
 	double maxValue = 255;
-
+	hsv_planes[1].copyTo(skin_region(region));
+	//imshow("2" + fillet.name, hsv_planes[2]);
 	// Binary Threshold
+	medianBlur(skin_region, skin_region, 21);
+	threshold(skin_region, skin_region, thresh, maxValue, 4);
 	
-	threshold(hsv_planes[1], skinimg, thresh, maxValue, 4);
+	
+
+	int erosion_size = 11;
+
+
+
+	Mat element = getStructuringElement(MORPH_RECT,
+		Size(2 * erosion_size + 1, 2 * erosion_size + 1),
+		Point(erosion_size, erosion_size));
+
+	erode(skin_region, skin_region, element);
+	dilate(skin_region, skin_region, element);
+
+	imshow("skin "+ fillet.name, skin_region);
+	
 
 	//threshold(hsv_planes[1], skinimg, thresh, maxValue, 1);
 	//inRange(fillet.img, Scalar(20, 40, 25), Scalar(35, 50, 43), skinimg);
 	
 
-	Mat element = getStructuringElement(MORPH_RECT, Size(5, 5));
+	/*
 	Mat element3 = getStructuringElement(MORPH_RECT, Size(9, 9));
+	Mat element4 = getStructuringElement(MORPH_RECT, Size(5, 5));
 
 	Mat heightel = getStructuringElement(MORPH_RECT, Size(5, 20));
 	Mat widthel = getStructuringElement(MORPH_RECT, Size(10, 30));
-
+	
 
 	
 	//MÅSKE KAN VI SLETTE NOGLE AF MORPHOLGY????????+
-
+	
 	Mat element2 = getStructuringElement(MORPH_RECT, Size(5, 5));
-	morphologyEx(skinimg, skinimg, MORPH_OPEN, element); //opening
-	morphologyEx(skinimg, skinimg, MORPH_OPEN, element3); //opening
-	morphologyEx(skinimg, skinimg, MORPH_CLOSE, element2); //closing
-	morphologyEx(skinimg, skinimg, MORPH_OPEN, widthel); //closing
-	morphologyEx(skinimg, skinimg, MORPH_OPEN, heightel); //closing
-	
-	findContours(skinimg, fillet.skin_contour, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
-	//imshow("skinred " + fillet.name, bgr_planes[1]);
-	
+	morphologyEx(skin_region, skin_region, MORPH_OPEN, element4); //opening
+	morphologyEx(skin_region, skin_region, MORPH_OPEN, element3); //opening
+	morphologyEx(skin_region, skin_region, MORPH_CLOSE, element2); //closing
+	morphologyEx(skin_region, skin_region, MORPH_OPEN, widthel); //closing
+	morphologyEx(skin_region, skin_region, MORPH_OPEN, heightel); //closing
+	*/
+	vector<vector<Point>> skin_contourtemp;
+
+	findContours(skin_region(region),skin_contourtemp, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
+	for (int i=0; i< skin_contourtemp.size();i++)
+	{
+		if (contourArea(skin_contourtemp[i]) > 3000)
+			fillet.skin_contour.push_back(skin_contourtemp[i]);
+	}
 }
 //-------------------------------------------Efter-Features--------------------------------------------------------------------------------------------------------------------
 
@@ -279,6 +363,7 @@ void ExtractFeat::saveFeatures(const Fillet &fillet)
 	datafile << fillet.bloodstain_contours.size() << ',';
 	datafile << fillet.indendts.size() << ',';
 	datafile << fillet.hullarity << '\n';
+	datafile << fillet.skin_contour.size() << '\n';
 	datafile.close();
 }
 
@@ -291,7 +376,7 @@ void ExtractFeat::drawFeatures(Mat &img, Fillet &fillet)
 	// PÅ STORE IMG
 
 	// Draw contour outline
-	polylines(img(fillet.boundRect), fillet.contour, true, Scalar(255, 255, 255), 1);
+	//polylines(img(fillet.boundRect), fillet.contour, true, Scalar(255, 255, 255), 1);
 
 	// Draw the rotated minRect
 	Point2f rect_points[4];
@@ -318,7 +403,7 @@ void ExtractFeat::drawFeatures(Mat &img, Fillet &fillet)
 	//circle(img, center, 6, Scalar(0, 255, 0));
 
 	// Put fish name on image
-	//putText(img, fillet.name, Point(center.x - 60, center.y - 10), FONT_HERSHEY_COMPLEX_SMALL, 1, cvScalar(200, 200, 250), 1, CV_AA);
+	putText(img, fillet.name, Point(center.x - 60, center.y - 10), FONT_HERSHEY_COMPLEX_SMALL, 1, cvScalar(200, 200, 250), 1, CV_AA);
 
 	// Draw poly around the bloodstain
 	drawContours(img(fillet.boundRect), fillet.bloodstain_contours, -1, Scalar(0, 0, 255), 2);
@@ -330,10 +415,7 @@ void ExtractFeat::drawFeatures(Mat &img, Fillet &fillet)
 	//draw skin
 	for (int skin_i = 0; skin_i < fillet.skin_contour.size(); skin_i++)
 	{
-		if (contourArea(fillet.skin_contour[skin_i])>1000)
-		{
-			//drawContours(img(fillet.boundRect), fillet.skin_contour, skin_i, Scalar(0, 255, 255), -1);
-		}
+			drawContours(img(fillet.boundRect), fillet.skin_contour, skin_i, Scalar(0, 255, 255), -1);
 	}
 
 
@@ -363,8 +445,20 @@ void ExtractFeat::drawFeatures(Mat &img, Fillet &fillet)
 	// Draw fill the indents
 	drawContours(fillet.img, fillet.indendts, -1, Scalar(0, 0, 255),-1);
 
-	//Draw Convex
-	polylines(fillet.bin, fillet.hull, true, Scalar(0,255,255), 3);
+	Mat binHull = Mat(fillet.bin.rows, fillet.bin.cols, CV_8UC3, Scalar(0, 0, 0));
+
+	
+	
+
+	/*//Draw Convex
+	polylines(binHull, fillet.hull, true, Scalar(65,163,244), 3);
+	
+	vector<vector<Point>> binHullCon;
+
+	binHullCon.push_back(fillet.contour);
+
+	drawContours(binHull, binHullCon, -1, Scalar(255, 255, 255), -1);
+	displayImg(fillet.name, binHull);*/
 
 }
 //----------------------------------------------MAIN--------------------------------------------------------------------------------------------------
@@ -464,12 +558,12 @@ void ExtractFeat::run(vector<Mat> &images)
 			//displayImg(new_fillet.name, new_fillet.img);
 
 			//displayImg("hello" + new_fillet.name, new_fillet.bin);
-			displayImg(new_fillet.name, new_fillet.img);
+			
 
 		}
 		
 		String name_orig = "Original img " + to_string(index);
-		//displayImg(name_orig, images[index]);
+		displayImg(name_orig, images[index]);
 		//String name_bin = "Binary img " + to_string(index);
 		//displayImg(name_bin, bin);
 		
