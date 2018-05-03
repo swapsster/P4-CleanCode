@@ -8,7 +8,7 @@ void ExtractFeat::clearFileContent()
 {
 	ofstream ofs;
 	ofs.open(data_file_path, std::ofstream::out | std::ofstream::trunc);										 // Open and clear content
-	ofs << "Name,Width,Height,Area,Hist_mean blue,Hist_mean green,Hist_mean red,Bloodstains,Indents,Hullarity,Skin Areas\n";
+	//ofs << "Name,Width,Height,Area,Hist_mean blue,Hist_mean green,Hist_mean red,Bloodstains,Indents,Hullarity,Skin Areas\n";
 	ofs.close();
 }
 
@@ -57,6 +57,7 @@ void ExtractFeat::getMeanHist(Fillet &fillet)
 	calcHist(&bgr_planes[2], 1, nullptr, Mat(), r_hist, 1, &histSize, &histRange, uniform, accumulate);
 
 	//------------------------------------------------------------------------------------------------//
+	/*
 	// Draw the histograms for B, G and R
 	int hist_w = 512; int hist_h = 400;
 	int bin_w = cvRound((double)hist_w / histSize);
@@ -69,14 +70,7 @@ void ExtractFeat::getMeanHist(Fillet &fillet)
 	normalize(r_hist, r_hist, 0, histImage.rows, NORM_MINMAX, -1, Mat());
 
 
-	ofstream datafile;
-	datafile.open("C:\\Users\\Swapsster\\Documents\\p4\\project\\CleanCode\\CleanCode\\Data\\Histogram.dat", std::ios_base::app);
-	datafile << fillet.name << ',';
-
 	
-	
-
-
 	/// Draw for each channel
 	for (int i = 2; i < histSize; i++)
 	{
@@ -101,15 +95,16 @@ void ExtractFeat::getMeanHist(Fillet &fillet)
 	/// Display
 	//namedWindow("H"+fillet.name, CV_WINDOW_AUTOSIZE);
 	//imshow("H"+fillet.name, histImage);
-	
-
+	//imshow("fillet" + fillet.name, fillet.img);
+	*/
 
 
 	/// Compute the weighted mean
 	float sum[3] = { 0 };
 	int pixels[3] = { 0 };
 	
-	for (int i = 0; i < b_hist.rows; i++)										// Start at i = 0 to ignore black pixels
+
+	for (int i = 1; i < b_hist.rows; i++)										// Start at i = 0 to ignore black pixels
 	{				
 
 		pixels[0] += b_hist.at<float>(i);
@@ -120,12 +115,18 @@ void ExtractFeat::getMeanHist(Fillet &fillet)
 		sum[1] += g_hist.at<float>(i)*i;
 		sum[2] += r_hist.at<float>(i)*i;
 	}
-
+	
+	
 	fillet.hist_mean[0] = sum[0] / pixels[0];
 	fillet.hist_mean[1] = sum[1] / pixels[1];
 	fillet.hist_mean[2] = sum[2] / pixels[2];
 
-
+	/*Scalar mb,mg,mr, stdvb, stdvr, stdvg;
+	//for at få variance
+	meanStdDev(b_hist, mb, stdvb);
+	meanStdDev(g_hist, mg, stdvg);
+	meanStdDev(r_hist, mr, stdvr);
+*/
 
 }
 
@@ -183,12 +184,12 @@ void ExtractFeat::getBloodStains(Fillet &fillet)
 
 	// Filter by Area (Min and max to only get pixels defining a common blood stain)
 	params.filterByArea = true;
-	params.minArea = 1000; //bloodspot minmum størrelse
-	params.maxArea = 8000; //bloodspot maximuum størrelse
+	params.minArea = 500; //bloodspot minmum størrelse
+	params.maxArea = 10000; //bloodspot maximuum størrelse
 
 	// Filter by Inertia
-	//params.filterByInertia = true;
-	//params.minInertiaRatio = 0.2; //hvor meget bloodspottet afviger sig fra en cirkel
+	params.filterByInertia = true;
+	params.minInertiaRatio = 0.2; //hvor meget bloodspottet afviger sig fra en cirkel
 
 	Ptr<SimpleBlobDetector> detector = SimpleBlobDetector::create(params);
 	vector<KeyPoint> keypoints;
@@ -277,7 +278,7 @@ void ExtractFeat::getSkin(Fillet &fillet)
 {
 	int edgeSize = 50;
 
-
+	//Mat blood_region = Mat(fillet.boundRect.height + edgeSize * 2, fillet.boundRect.width + edgeSize * 2, CV_8U, Scalar(0, 0, 0));
 	Mat skin_region = Mat(fillet.boundRect.height + edgeSize * 2, fillet.boundRect.width + edgeSize * 2, CV_8U, Scalar(0, 0, 0));
 	
 	Rect region = Rect(edgeSize, edgeSize, fillet.boundRect.width, fillet.boundRect.height);
@@ -300,7 +301,12 @@ void ExtractFeat::getSkin(Fillet &fillet)
 	medianBlur(skin_region, skin_region, 21);
 	threshold(skin_region, skin_region, thresh, maxValue, 4);
 	
-	
+	/*double thresh_blood = 100;
+	double maxValue_blood = 255;
+
+	hsv_planes[2].copyTo(blood_region(region));
+	threshold(blood_region, blood_region, thresh_blood, maxValue_blood, 1);
+	imshow("Vcha" + fillet.name, blood_region);*/
 
 	int erosion_size = 11;
 
@@ -313,7 +319,7 @@ void ExtractFeat::getSkin(Fillet &fillet)
 	erode(skin_region, skin_region, element);
 	dilate(skin_region, skin_region, element);
 
-	imshow("skin "+ fillet.name, skin_region);
+
 	
 
 	//threshold(hsv_planes[1], skinimg, thresh, maxValue, 1);
@@ -343,7 +349,7 @@ void ExtractFeat::getSkin(Fillet &fillet)
 	findContours(skin_region(region),skin_contourtemp, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
 	for (int i=0; i< skin_contourtemp.size();i++)
 	{
-		if (contourArea(skin_contourtemp[i]) > 3000)
+		if (contourArea(skin_contourtemp[i]) > 5000)
 			fillet.skin_contour.push_back(skin_contourtemp[i]);
 	}
 }
@@ -357,12 +363,13 @@ void ExtractFeat::saveFeatures(const Fillet &fillet)
 {
 	ofstream datafile;
 	datafile.open(data_file_path, std::ios_base::app);
-	datafile << fillet.name << ',';
+	
+	//datafile << fillet.name << ',';
 	datafile << fillet.width << ',' << fillet.height << ',' << fillet.area << ',';
 	datafile << fillet.hist_mean[0] << ',' << fillet.hist_mean[1] << ',' << fillet.hist_mean[2] << ',';
 	datafile << fillet.bloodstain_contours.size() << ',';
 	datafile << fillet.indendts.size() << ',';
-	datafile << fillet.hullarity << '\n';
+	datafile << fillet.hullarity << ',';
 	datafile << fillet.skin_contour.size() << '\n';
 	datafile.close();
 }
@@ -484,7 +491,7 @@ void ExtractFeat::run(vector<Mat> &images)
 		{
 
 			// Skip if the area is too small
-			if (contourArea(contours[i]) < 10000)
+			if (contourArea(contours[i]) < 30000)
 			{
 			continue;
 			}
@@ -567,8 +574,10 @@ void ExtractFeat::run(vector<Mat> &images)
 		//String name_bin = "Binary img " + to_string(index);
 		//displayImg(name_bin, bin);
 		
+		imshow("heeejhehe", images[0]);
 	}
 	waitKey(0);
+	
 }
 
 
